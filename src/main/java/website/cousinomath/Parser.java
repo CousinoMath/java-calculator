@@ -33,27 +33,34 @@ class Parser {
             || this.tokens.get(this.current).getType() == TokenType.EOI;
     }
 
-    public ASTNode parse() { return this.assignment(); }
+    public Result<ASTNode, String> parse() { return this.assignment(); }
 
-    private ASTNode assignment() {
+    private Result<ASTNode, String> assignment() {
         Token current = this.peek(0);
         if (current.getType() == TokenType.VARIABLE) {
             Token next = this.peek(1);
             if (next.getType() == TokenType.EQUALS) {
                 this.advance();
                 this.advance();
-                ASTNode expr = this.expression();
+                Result<ASTNode, String> exprResult = this.expression();
+                if (exprResult.isErr()) {
+                    return exprResult;
+                }
                 String name = current.getValue().map(Object::toString)
                     .orElse("");
-                return new ASTAssign(name, expr);
+                return new Ok<>(new ASTAssign(name, exprResult.unwrap()));
             }
         }
         return this.expression();
     }
 
-    private ASTNode expression() {
+    private Result<ASTNode, String> expression() {
         List<ASTNode> arguments = new ArrayList<ASTNode>();
-        arguments.add(this.factor());
+        Result<ASTNode, String> result = this.factor();
+        if (result.isErr()) {
+            return result;
+        }
+        arguments.add(result.unwrap());
     loop:
         while (! this.atEOI()) {
             Token current = this.peek(0);
@@ -63,11 +70,19 @@ class Parser {
                     break loop;
                 case PLUS:
                     this.advance();
-                    arguments.add(this.factor());
+                    result = this.factor();
+                    if (result.isErr()) {
+                        return result;
+                    }
+                    arguments.add(result.unwrap());
                     break;
                 case DASH:
                     this.advance();
-                    ASTNode factor = this.factor();
+                    result = this.factor();
+                    if (result.isErr()) {
+                        return result;
+                    }
+                    ASTNode factor = result.unwrap();
                     ASTNumber mOne = new ASTNumber(-1.0);
                     arguments.add(new ASTTimes(Arrays.asList(mOne, factor)));
                     break;
@@ -75,20 +90,24 @@ class Parser {
                     this.advance();
                     StringBuilder sb = new StringBuilder("Expected plus or minus, not the token ");
                     sb.append(current.toString());
-                    throw new ArithmeticException(sb.toString());
+                    return new Err<>(sb.toString());
 
             }
         }
         switch (arguments.size()) {
-            case 0: return new ASTNumber(0.0);
-            case 1: return arguments.get(0);
-            default: return new ASTPlus(arguments);
+            case 0: return new Ok<>(new ASTNumber(0.0));
+            case 1: return new Ok<>(arguments.get(0));
+            default: return new Ok<>(new ASTPlus(arguments));
         }
     }
 
-    private ASTNode factor() {
+    private Result<ASTNode, String> factor() {
         List<ASTNode> arguments = new ArrayList<ASTNode>();
-        arguments.add(this.exponential());
+        Result<ASTNode, String> result = this.exponential();
+        if (result.isErr()) {
+            return result;
+        }
+        arguments.add(result.unwrap());
     loop:
         while (! this.atEOI()) {
             Token current = this.peek(0);
@@ -100,11 +119,19 @@ class Parser {
                     break loop;
                 case STAR:
                     this.advance();
-                    arguments.add(this.exponential());
+                    result = this.exponential();
+                    if (result.isErr()) {
+                        return result;
+                    }
+                    arguments.add(result.unwrap());
                     break;
                 case SLASH:
                     this.advance();
-                    ASTNode exponential = this.exponential();
+                    result = this.exponential();
+                    if (result.isErr()) {
+                        return result;
+                    }
+                    ASTNode exponential = result.unwrap();
                     ASTNumber mOne = new ASTNumber(-1.0);
                     arguments.add(new ASTPower(exponential, mOne));
                     break;
@@ -112,24 +139,28 @@ class Parser {
                     this.advance();
                     StringBuilder sb = new StringBuilder("Expected times or divides, not the token ");
                     sb.append(current.toString());
-                    throw new ArithmeticException(sb.toString());
+                    return new Err<>(sb.toString());
             }
         }
         switch (arguments.size()) {
-            case 0: return new ASTNumber(1.0);
-            case 1: return arguments.get(0);
-            default: return new ASTTimes(arguments);
+            case 0: return new Ok<>(new ASTNumber(1.0));
+            case 1: return new Ok<>(arguments.get(0));
+            default: return new Ok<>(new ASTTimes(arguments));
         }
     }
 
-    private ASTNode exponential() {
+    private Result<ASTNode, String> exponential() {
         Token current = this.peek(0);
         boolean negate = false;
         if (current.getType() == TokenType.DASH) {
             this.advance();
             negate = true;
         }
-        ASTNode result = this.atom();
+        Result<ASTNode, String> result = this.atom();
+        if (result.isErr()) {
+            return result;
+        }
+        ASTNode exponential = result.unwrap();
         current = this.peek(0);
         switch (current.getType()) {
             case PLUS:
@@ -141,47 +172,52 @@ class Parser {
                 break;
             case CARET:
                 this.advance();
-                result = new ASTPower(result, this.exponential());
+                result = this.exponential().map((ASTNode exp) -> new ASTPower(exponential, exp));
                 break;
             default:
                 this.advance();
                 StringBuilder sb = new StringBuilder("Expected caret, not the token ");
                 sb.append(current.toString());
-                throw new ArithmeticException(sb.toString());
+                return new Err<>(sb.toString());
         }
         if (negate) {
             ASTNumber mOne = new ASTNumber(-1.0);
-            result = new ASTTimes(Arrays.asList(mOne, result));
+            result = result.map((ASTNode exp) -> new ASTTimes(Arrays.asList(mOne, exp)));
         }
         return result;
     }
 
-    private ASTNode atom() {
+    private Result<ASTNode, String> atom() {
         Token current = this.peek(0);
         Optional<Object> optional = current.getValue();
         Double value = Double.NaN;
         String name = "";
+        Result<ASTNode, String> result;
         switch (current.getType()) {
             case NUMBER:
                 this.advance();
                 value = (Double)optional.get();
-                return new ASTNumber(value.doubleValue());
+                return new Ok<>(new ASTNumber(value.doubleValue()));
             case VARIABLE:
                 this.advance();
                 name = (String)optional.get();
-                return new ASTVariable(name);
+                return new Ok<>(new ASTVariable(name));
             case CONSTANT:
                 this.advance();
                 name = (String)optional.get();
-                return new ASTConstant(name);
+                return new Ok<>(new ASTConstant(name));
             case FUNCTION:
                 this.advance();
                 name = (String)optional.get();
-                ASTNode argument = this.atom();
-                return new ASTFunction(name, argument);
+                result = this.atom();
+                if (result.isErr()) {
+                    return result;
+                }
+                ASTNode argument = result.unwrap();
+                return new Ok<>(new ASTFunction(name, argument));
             case LPAREN:
                 this.advance();
-                ASTNode result = this.expression();
+                result = this.expression();
                 this.consume(")");
                 return result;
             default:

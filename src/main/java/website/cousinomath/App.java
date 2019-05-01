@@ -16,12 +16,22 @@ class App {
             String input = stdin.readLine();
             cont = input != null;
             if (cont) {
-                List<Token> tokens = (new Scanner(input)).lex();
+                Result<List<Token>, String> tokensResult = (new Scanner(input)).lex();
+                if (tokensResult.isErr()) {
+                    System.out.println(tokensResult.unwrapErr());
+                    continue;
+                }
+                List<Token> tokens = tokensResult.unwrap();
                 for (Token token : tokens) {
                     System.out.print(token.toString());
                 }
                 System.out.println("");
-                ASTNode node = (new Parser(tokens)).parse();
+                Result<ASTNode, String> nodeResult = (new Parser(tokens)).parse();
+                if (nodeResult.isErr()) {
+                    System.out.println(nodeResult.unwrapErr());
+                    continue;
+                }
+                ASTNode node = nodeResult.unwrap();
                 System.out.println(node.toString());
                 double value = node.evaluate(memory);
                 System.out.println(value);

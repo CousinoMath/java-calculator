@@ -23,17 +23,21 @@ class Scanner {
         this.length = source.length();
     }
 
-    public List<Token> lex() {
+    public Result<List<Token>, String> lex() {
         if (this.current == 0) {
             while (this.current < this.length) {
                 this.skipWhitespace();
                 this.start = this.current;
                 this.advance();
-                this.tokens.add(this.nextToken());
+                Result<Token, String> result = this.nextToken();
+                if (result.isErr()) {
+                    return new Err<>(result.unwrapErr());
+                }
+                this.tokens.add(result.unwrap());
             }
             this.tokens.add(new Token(TokenType.EOI, "♣"));
         }
-        return this.tokens;
+        return new Ok<>(this.tokens);
     }
 
     private void advance() {
@@ -49,7 +53,7 @@ class Scanner {
         }
     }
 
-    private Token nextToken() {
+    private Result<Token, String> nextToken() {
         char start = this.source.charAt(this.start);
         if (Character.isDigit(start)) {
             return this.parseNumber();
@@ -58,31 +62,35 @@ class Scanner {
             return this.parseIdentifier();
         }
         switch (start) {
-            case '+': return new Token(TokenType.PLUS, "+");
-            case '-': return new Token(TokenType.DASH, "-");
-            case '*': return new Token(TokenType.STAR, "*");
-            case '/': return new Token(TokenType.SLASH, "/");
-            case '^': return new Token(TokenType.CARET, "^");
-            case '=': return new Token(TokenType.EQUALS, "=");
-            case '(': return new Token(TokenType.LPAREN, "(");
-            case ')': return new Token(TokenType.RPAREN, ")");
+            case '+': return new Ok<>(new Token(TokenType.PLUS, "+"));
+            case '-': return new Ok<>(new Token(TokenType.DASH, "-"));
+            case '*': return new Ok<>(new Token(TokenType.STAR, "*"));
+            case '/': return new Ok<>(new Token(TokenType.SLASH, "/"));
+            case '^': return new Ok<>(new Token(TokenType.CARET, "^"));
+            case '=': return new Ok<>(new Token(TokenType.EQUALS, "="));
+            case '(': return new Ok<>(new Token(TokenType.LPAREN, "("));
+            case ')': return new Ok<>(new Token(TokenType.RPAREN, ")"));
             default:
                       StringBuilder sb = new StringBuilder("Unrecognized token ");
                       sb.append(start);
-                      throw new IllegalStateException(sb.toString());
+                      return new Err<>(sb.toString());
         }
     }
 
-    private Token parseNumber() {
+    private Result<Token, String> parseNumber() {
         while (this.current < this.length && (Character.isDigit(this.source.charAt(this.current)) || this.source.charAt(this.current) == '.')) {
             this.advance();
         }
         String substring = this.source.substring(this.start, this.current);
-        Double value = Double.parseDouble(substring);
-        return new Token(TokenType.NUMBER, substring, value);
+        try {
+            Double value = Double.parseDouble(substring);
+            return new Ok<>(new Token(TokenType.NUMBER, substring, value));
+        } catch (NumberFormatException nfe) {
+            return new Err<>(nfe.getLocalizedMessage());
+        }
     }
 
-    private Token parseIdentifier() {
+    private Result<Token, String> parseIdentifier() {
         while (this.current < this.length
                 && Character.isLetterOrDigit(
                     this.source.charAt(this.current))) {
@@ -90,11 +98,11 @@ class Scanner {
         }
         String substring = this.source.substring(this.start, this.current);
         if (this.constants.contains(substring)) {
-            return new Token(TokenType.CONSTANT, substring, substring);
+            return new Ok<>(new Token(TokenType.CONSTANT, substring, substring));
         }
         if (this.functions.contains(substring)) {
-            return new Token(TokenType.FUNCTION, substring, substring);
+            return new Ok<>(new Token(TokenType.FUNCTION, substring, substring));
         }
-        return new Token(TokenType.VARIABLE, substring, substring);
+        return new Ok<>(new Token(TokenType.VARIABLE, substring, substring));
     }
 }
