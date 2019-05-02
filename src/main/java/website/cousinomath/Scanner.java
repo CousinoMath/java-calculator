@@ -19,8 +19,8 @@ class Scanner {
     private int current = 0;
     
     public Scanner(String source) {
-        this.source = source;
-        this.length = source.length();
+        this.source = source.trim();
+        this.length = this.source.length();
     }
 
     public Result<List<Token>, String> lex() {
